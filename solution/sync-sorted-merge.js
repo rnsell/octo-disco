@@ -16,7 +16,7 @@ const buildHeapSyncronouslyFromLogSources = ({ logSources }) => {
   // The heap is using references to the original array of log sources. This should reduce the amount of memory used.
   // I am going to assume the heap is not cloning the references to the log sources.
   logSources.forEach((logSource) => {
-    // This try try catch is a bit redundant but its probably worth throwing a custom error if something occurs
+    // This try try catch is a bit redundant but its probably worth throwing a custom error if something occurs in real life
     try {
       const latestEntry = logSource.pop();
       if (latestEntry) {
@@ -46,6 +46,7 @@ const printLogEntriesSync = ({ logStateHeap, printer }) => {
     emptyHeap = logStateHeap.isEmpty();
 
     if (!emptyHeap) {
+      // This try try catch is a bit redundant but its probably worth throwing a custom error if something occurs in real life
       try {
         const latestEntry = logSourceWithOldestDate.pop();
 
@@ -73,8 +74,7 @@ const syncSortedSolution = (logSources, printer) => {
   return console.log("Sync sort complete.");
 };
 
-// Changed this to export an object. In the event a module grows in size its sometimes necessary to export multiple things.
-// This allows for more flexibility in the future, without having to do massive module refactoring in PRs on file imports.
+// Changed this to export an object. In the event a module grows in size its sometimes necessary to export multiple things especially for testing purposes.
 // It also create a searchable name for the code in the module that is being exported in the event a persons IDE doesn't support reference checking.
 module.exports = {
   buildHeapSyncronouslyFromLogSources,
