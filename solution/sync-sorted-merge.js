@@ -1,52 +1,74 @@
 "use strict";
-// Lets not build and maintain a custom heap implementation unless theres a business reason to do so.
-// We care about the max value in the heap and its a relatively performant solution since we always care about the max log entry
+// Lets not build and maintain a custom heap implementation unless theres a reason to do so.
+// If I was suppose to build my own custom heap implementation then I guess I struck out on this one
+// We care about the max value in the heap and its a relatively performant solution since we always care about the old log entry
 const { Heap } = require("@datastructures-js/heap");
-const {
-  LogSourceState,
-  logSourceStateComparator,
-} = require("./log-source-state");
+const { logSourceComparator } = require("./log-source-comparator");
 
-const syncSortedSolution = (logSources, printer) => {
-  const totalSources = logSources.length;
-  const logStateHeap = new Heap(logSourceStateComparator);
+// The next two functions are private functions essentially not for public consumption but I am exposing them for testing purposes
+// One idea could be to add _ in front of the function name to indicate that its private or create a private namespace
+// or possibly split them out into a seperate files and only expose the public functions in a roll up index.js file
+// _ is a hold over from other languages to indicate a private data in a class.
+const buildHeapSyncronouslyFromLogSources = ({ logSources }) => {
+  const logSourceHeap = new Heap(logSourceComparator);
 
   // Seed the heap with at most N values onto the heap where N is the total amount of log sources
-  // Lets assume for now that the one record from each log source can fit into the total memory
-  // of this machine. This should be adjustable via node memory settings.
-  for (let i = 0; i < totalSources; i++) {
-    const currentLogSource = logSources[i];
-    const logEntry = currentLogSource.pop();
-    const drained = !logEntry;
-
-    const initialState = new LogSourceState(drained, logEntry, i);
-
-    if (!initialState.drained) {
-      logStateHeap.insert(initialState);
+  // The heap is using references to the original array of log sources. This should reduce the amount of memory used.
+  // I am going to assume the heap is not cloning the references to the log sources.
+  logSources.forEach((logSource) => {
+    // This try try catch is a bit redundant but its probably worth throwing a custom error if something occurs
+    try {
+      const latestEntry = logSource.pop();
+      if (latestEntry) {
+        logSourceHeap.insert(logSource);
+      }
+    } catch (error) {
+      console.error(
+        "Error occurred while trying to read from the log source",
+        error
+      );
+      throw new Error(
+        "Error occurred while trying to read from the log source"
+      );
     }
-  }
+  });
 
+  return logSourceHeap;
+};
+
+const printLogEntriesSync = ({ logStateHeap, printer }) => {
   let emptyHeap = logStateHeap.isEmpty();
 
   while (!emptyHeap) {
-    const mostActiveLogEntry = logStateHeap.extractRoot();
-    printer.print(mostActiveLogEntry.logEntry);
+    const logSourceWithOldestDate = logStateHeap.extractRoot();
+    printer.print(logSourceWithOldestDate.last);
 
     emptyHeap = logStateHeap.isEmpty();
 
     if (!emptyHeap) {
-      const sourceIndex = mostActiveLogEntry.logSourceIndex;
-      const logSourceToExtraNewRecord = logSources[sourceIndex];
-      const newLogEntry = logSourceToExtraNewRecord.pop();
-      const drained = !newLogEntry;
+      try {
+        const latestEntry = logSourceWithOldestDate.pop();
 
-      const newState = new LogSourceState(drained, newLogEntry, sourceIndex);
-      // if the log source is
-      if (!newState.drained) {
-        logStateHeap.insert(newState);
+        if (latestEntry) {
+          logStateHeap.insert(logSourceWithOldestDate);
+        }
+      } catch (error) {
+        console.error(
+          "Error occurred while trying to read from the log source",
+          error
+        );
+        throw new Error(
+          "Error occurred while trying to read from the log source"
+        );
       }
     }
   }
+};
+
+const syncSortedSolution = (logSources, printer) => {
+  const logStateHeap = buildHeapSyncronouslyFromLogSources({ logSources });
+
+  printLogEntriesSync({ logStateHeap, printer });
 
   return console.log("Sync sort complete.");
 };
@@ -55,5 +77,7 @@ const syncSortedSolution = (logSources, printer) => {
 // This allows for more flexibility in the future, without having to do massive module refactoring in PRs on file imports.
 // It also create a searchable name for the code in the module that is being exported in the event a persons IDE doesn't support reference checking.
 module.exports = {
+  buildHeapSyncronouslyFromLogSources,
+  printLogEntriesSync,
   syncSortedSolution,
 };

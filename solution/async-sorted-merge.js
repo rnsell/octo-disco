@@ -1,20 +1,18 @@
 "use strict";
 const { Heap } = require("@datastructures-js/heap");
-const {
-  LogSourceState,
-  logSourceStateComparator,
-} = require("./log-source-state");
+const { logSourceComparator } = require("./log-source-comparator");
 const bluebird = require("bluebird");
 
-// Its probably not a good idea to allow for unlimited promises to resolve conncurrently
-// There could be other solutions worth evalutating such as using a rate limiter to control the amount of promises that can resolve concurrently
-// while also setting a max read limit depending on the type of sources we're reading from
-const MAX_NUMBER_OF_CONCURRENT_PROMISES = 10;
-// Print all entries, across all of the *async* sources, in chronological order.
-// This function was converted to async await to simplify the code
-const asyncSortedSolution = async (asyncLogSources, printer) => {
-  const logStateHeap = new Heap(logSourceStateComparator);
+// The next two functions are private functions essentially not for public consumption but I am exposing them for testing purposes
+// One idea could be to add _ in front of the function name to indicate that its private or create a private namespace
+// or possibly split them out into a seperate files and only expose the public functions in a roll up index.js file
+// _ is a hold over from other languages to indicate a private function.
 
+// We don't want to allow an infinite amount of concurrent promises to resolve
+// This could be a config value that a developer could set
+const MAX_NUMBER_OF_CONCURRENT_PROMISES = 10;
+const buildHeapAsyncronouslyFromLogSources = async ({ asyncLogSources }) => {
+  const logStateHeap = new Heap(logSourceComparator);
   // Seed the heap with values from the async log sources.
   // we need each to resolve before we can start printing them
   // We don't want to allow an infinite amount of concurrent promises to resolve
@@ -23,43 +21,75 @@ const asyncSortedSolution = async (asyncLogSources, printer) => {
   await bluebird.each(
     asyncLogSources,
     // Async await does simplify the code a bit vs using promises
-    async (currentLogSource, i) => {
-      const logEntry = await currentLogSource.popAsync();
-      const drained = !logEntry;
-      const initialState = new LogSourceState(drained, logEntry, i);
+    async (logSource) => {
+      try {
+        const latestEntry = await logSource.popAsync();
 
-      if (!initialState.drained) {
-        logStateHeap.insert(initialState);
+        if (latestEntry) {
+          logStateHeap.insert(logSource);
+        }
+      } catch (error) {
+        console.error(
+          "Error occurred while trying to read from the log source",
+          error
+        );
+        throw new Error(
+          "Error occurred while trying to read from the log source"
+        );
       }
     },
     { concurrency: MAX_NUMBER_OF_CONCURRENT_PROMISES }
   );
 
+  return logStateHeap;
+};
+
+// with async await this is pretty much the exact same alg as the sync version
+// The only difference is that we are using async await to handle the promises
+// the example code doesn't throw an error nor give any indications of what to do if an error occurs
+const printLogEntriesAsync = async ({ logStateHeap, printer }) => {
   let emptyHeap = logStateHeap.isEmpty();
 
   while (!emptyHeap) {
-    const latestLogEntry = logStateHeap.extractRoot();
-    printer.print(latestLogEntry.logEntry);
+    const logSourceWithOldestDate = logStateHeap.extractRoot();
+    printer.print(logSourceWithOldestDate.last);
 
     emptyHeap = logStateHeap.isEmpty();
 
     if (!emptyHeap) {
-      const sourceIndex = latestLogEntry.logSourceIndex;
-      const logSourceToExtraNewRecord = asyncLogSources[sourceIndex];
-      // We need to wait for the promise to resolve before we can continue
-      const newLogEntry = await logSourceToExtraNewRecord.popAsync();
-      const drained = !newLogEntry;
-      const newState = new LogSourceState(drained, newLogEntry, sourceIndex);
-      // if the log source is not drained, we need to insert the new state into the heap
-      if (!newState.drained) {
-        logStateHeap.insert(newState);
+      try {
+        const latestEntry = await logSourceWithOldestDate.popAsync();
+
+        if (latestEntry) {
+          logStateHeap.insert(logSourceWithOldestDate);
+        }
+      } catch (error) {
+        console.error(
+          "Error occurred while trying to read from the log source",
+          error
+        );
+        throw new Error(
+          "Error occurred while trying to read from the log source"
+        );
       }
     }
   }
+};
+
+// Print all entries, across all of the *async* sources, in chronological order.
+// This function was converted to async await to simplify the code
+const asyncSortedSolution = async (asyncLogSources, printer) => {
+  const logStateHeap = await buildHeapAsyncronouslyFromLogSources({
+    asyncLogSources,
+  });
+
+  await printLogEntriesAsync({ logStateHeap, asyncLogSources, printer });
 
   console.log("Async sort complete.");
 };
 
 module.exports = {
   asyncSortedSolution,
+  printLogEntriesAsync,
+  buildHeapAsyncronouslyFromLogSources,
 };
