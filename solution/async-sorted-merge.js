@@ -25,9 +25,8 @@ const asyncSortedSolution = async (asyncLogSources, printer) => {
     // Async await does simplify the code a bit vs using promises
     async (currentLogSource, i) => {
       const logEntry = await currentLogSource.popAsync();
-      const initialState = logEntry
-        ? new LogSourceState(false, logEntry, i)
-        : new LogSourceState(true, null, i);
+      const drained = !logEntry;
+      const initialState = new LogSourceState(drained, logEntry, i);
 
       if (!initialState.drained) {
         logStateHeap.insert(initialState);
