@@ -2,6 +2,8 @@
 
 const LogSource = require("./lib/log-source");
 const Printer = require("./lib/printer");
+const { syncSortedSolution } = require("./solution/sync-sorted-merge");
+const { asyncSortedSolution } = require("./solution/async-sorted-merge");
 
 function runSolutions(sourceCount) {
   return new Promise((resolve, reject) => {
@@ -25,12 +27,14 @@ function runSolutions(sourceCount) {
      * This function will ensure that what you print is in fact in chronological order.
      * Call 'printer.done()' at the end to get a few stats on your solution!
      */
+    // Create a collection of N logSources
     const syncLogSources = [];
     for (let i = 0; i < sourceCount; i++) {
       syncLogSources.push(new LogSource());
     }
+
     try {
-      require("./solution/sync-sorted-merge")(syncLogSources, new Printer());
+      syncSortedSolution(syncLogSources, new Printer());
       resolve();
     } catch (e) {
       reject(e);
@@ -54,7 +58,7 @@ function runSolutions(sourceCount) {
       for (let i = 0; i < sourceCount; i++) {
         asyncLogSources.push(new LogSource());
       }
-      require("./solution/async-sorted-merge")(asyncLogSources, new Printer())
+      asyncSortedSolution(asyncLogSources, new Printer())
         .then(resolve)
         .catch(reject);
     });
